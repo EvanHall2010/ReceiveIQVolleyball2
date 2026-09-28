@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Mobile & PWA Optimization Tags -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ReceiveIQ">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1120">
+<title>Volleyball Dual Serve-Receive Heat Map (From & To)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+colors: {
+brand: {
+50: '#f0f9ff',
+100: '#e0f2fe',
+500: '#0284c7',
+600: '#0369a1',
+700: '#075985',
+900: '#0c4a6e',
+},
+pass: {
+0: '#ef4444', // Red (0 Pass / Ace / Shank)
+1: '#eab308', // Yellow (1 Pass / Off-System)
+2: '#22c55e', // Green (2 Pass / Good)
+3: '#3b82f6' // Blue (3 Pass / Perfect)
+}
+},
+fontFamily: {
+sans: ['Inter', 'sans-serif'],
+}
+}
+}
+}
+</script>
+<style>
+body {
+font-family: 'Inter', sans-serif;
+background-color: #0b1120;
+color: #f8fafc;
+touch-action: manipulation;
+}
+.court-container {
+position: relative;
+touch-action: none;
+}
+.glass-panel {
+background: rgba(15, 23, 42, 0.75);
+backdrop-filter: blur(14px);
+border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+::-webkit-scrollbar {
+width: 6px;
+height: 6px;
+}
+::-webkit-scrollbar-track {
+background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+background: rgba(51, 65, 85, 0.8);
+border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+background: rgba(71, 85, 105, 1);
+}
+</style>
+</head>
+<body class="min-h-screen flex flex-col justify-between antialiased selection:bg-brand-500 selection:text-white">
+
+<header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-30 backdrop-blur-md">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
+<div class="flex items-center space-x-3">
+<div class="bg-gradient-to-tr from-brand-600 to-cyan-400 p-2.5 rounded-xl shadow-lg shadow-brand-500/20">
+<i class="fa-solid font-bold text-xl text-white fa-diagram-project"></i>
+</div>
+<div>
+<h1 class="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
+ReceiveIQ <span class="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-500/30 font-medium">Dual Vectors (FROM → TO)</span>
+</h1>
+<p class="text-xs text-slate-400">Passer Location & Target Trajectory Heat Mapping</p>
+</div>
+</div>
+
+<!-- Global Action Controls -->
+<div class="flex items-center gap-3 flex-wrap">
+<!-- Game Selection Dropdown -->
+<div class="flex items-center gap-2 bg-slate-800/90 border border-slate-700/60 rounded-lg px-3 py-1.5">
+<i class="fa-solid fa-trophy text-amber-400 text-sm"></i>
+<label for="gameSelect" class="text-xs text-slate-400 font-medium hidden sm:inline">Game Scope:</label>
+<select id="gameSelect" onchange="handleGameChange()" class="bg-transparent text-sm text-slate-200 font-semibold focus:outline-none cursor-pointer">
+<option value="ALL" class="bg-slate-900 text-slate-200">Full Season (All Games)</option>
+</select>
+</div>
+
+<!-- Working New Game Button -->
+<button type="button" id="btnOpenNewGame" onclick="openNewGameModal()" class="bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-brand-600/20 active:scale-95 cursor-pointer">
+<i class="fa-solid fa-plus text-xs"></i> New Game
+</button>
+
+<!-- Export Data -->
+<button type="button" onclick="exportData()" title="Export JSON Data Backup" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold p-2 rounded-lg border border-slate-700 transition-all cursor-pointer">
+<i class="fa-solid fa-download"></i>
+</button>
+
+<!-- Reset Memory Data -->
+<button type="button" onclick="confirmResetAllData()" title="Reset All Saved Data" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold p-2 rounded-lg border border-red-500/30 transition-all cursor-pointer">
+<i class="fa-solid fa-arrows-rotate"></i>
+</button>
+</div>
+</div>
+</header>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-grow">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+<!-- LEFT SIDEBAR: ROSTER & CONTROLS (4 COLS) -->
+<section class="lg:col-span-4 flex flex-col gap-5">
+
+<!-- PLAYER SELECTION CARD -->
+<div class="glass-panel p-5 rounded-2xl shadow-xl">
+<h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+<span><i class="fa-solid fa-users text-brand-400 mr-2"></i>Active Player Filter</span>
+<span id="playerPassCountBadge" class="text-xs bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700">0 passes</span>
+</h2>
+
+<select id="playerSelect" onchange="handlePlayerChange()" class="w-full bg-slate-900/90 border border-slate-700 text-slate-100 text-sm font-semibold rounded-xl p-3 focus:ring-2 focus:ring-brand-500 focus:outline-none transition-all">
+<option value="ALL" class="bg-slate-900 font-bold">ALL TEAM (14 Players)</option>
+<optgroup label="Liberos" id="optgroup-libero"></optgroup>
+<optgroup label="Outsides" id="optgroup-outside"></optgroup>
+<optgroup label="Opposites" id="optgroup-opposite"></optgroup>
+<optgroup label="Middles" id="optgroup-middle"></optgroup>
+<optgroup label="Setters" id="optgroup-setter"></optgroup>
+</select>
+
+<!-- Player Quick Stat Card -->
+<div id="playerStatCard" class="mt-4 p-3 bg-slate-900/60 rounded-xl border border-slate-800/80 flex items-center justify-between">
+<div>
+<div id="cardPlayerName" class="font-bold text-sm text-slate-100">Entire Team</div>
+<div id="cardPlayerRole" class="text-xs text-slate-400">14 Players Active</div>
+</div>
+<div class="text-right">
+<div class="text-xs text-slate-400 uppercase font-semibold">Pass Rating</div>
+<div id="cardPlayerRating" class="text-xl font-extrabold text-brand-400">0.00</div>
+</div>
+</div>
+</div>
+
+<!-- PASS QUALITY SCORE SELECTOR -->
+<div class="glass-panel p-5 rounded-2xl shadow-xl">
+<h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+<span><i class="fa-solid fa-crosshair text-brand-400 mr-2"></i>Pass Score to Plot</span>
+<span class="text-xs text-slate-500 font-normal">Select then click court</span>
+</h2>
+
+<div class="grid grid-cols-2 gap-3">
+<button type="button" onclick="setScoreToPlot(0)" id="scoreBtn-0" class="score-btn flex flex-col p-3 rounded-xl border border-red-500/30 bg-red-950/30 hover:bg-red-900/40 text-left transition-all relative overflow-hidden group cursor-pointer">
+<div class="flex items-center justify-between mb-1">
+<span class="w-3 h-3 rounded-full bg-red-500 inline-block shadow-sm shadow-red-500/50"></span>
+<span class="text-xs font-black text-red-400 uppercase tracking-wider">Score 0</span>
+</div>
+<span class="text-xs font-bold text-slate-200">Ace / Shank</span>
+<span class="text-[10px] text-slate-400">Ball dead / Out</span>
+</button>
+
+<button type="button" onclick="setScoreToPlot(1)" id="scoreBtn-1" class="score-btn flex flex-col p-3 rounded-xl border border-amber-500/30 bg-amber-950/30 hover:bg-amber-900/40 text-left transition-all relative overflow-hidden group cursor-pointer">
+<div class="flex items-center justify-between mb-1">
+<span class="w-3 h-3 rounded-full bg-amber-500 inline-block shadow-sm shadow-amber-500/50"></span>
+<span class="text-xs font-black text-amber-400 uppercase tracking-wider">Score 1</span>
+</div>
+<span class="text-xs font-bold text-slate-200">Off-System</span>
+<span class="text-[10px] text-slate-400">High ball set forced</span>
+</button>
+
+<button type="button" onclick="setScoreToPlot(2)" id="scoreBtn-2" class="score-btn flex flex-col p-3 rounded-xl border border-green-500/30 bg-green-950/30 hover:bg-green-900/40 text-left transition-all relative overflow-hidden group cursor-pointer">
+<div class="flex items-center justify-between mb-1">
+<span class="w-3 h-3 rounded-full bg-green-500 inline-block shadow-sm shadow-green-500/50"></span>
+<span class="text-xs font-black text-green-400 uppercase tracking-wider">Score 2</span>
+</div>
+<span class="text-xs font-bold text-slate-200">Good Pass</span>
+<span class="text-[10px] text-slate-400">2 pin hitters ready</span>
+</button>
+
+<button type="button" onclick="setScoreToPlot(3)" id="scoreBtn-3" class="score-btn flex flex-col p-3 rounded-xl border border-blue-500/30 bg-blue-950/30 hover:bg-blue-900/40 text-left transition-all relative overflow-hidden group cursor-pointer">
+<div class="flex items-center justify-between mb-1">
+<span class="w-3 h-3 rounded-full bg-blue-500 inline-block shadow-sm shadow-blue-500/50"></span>
+<span class="text-xs font-black text-blue-400 uppercase tracking-wider">Score 3</span>
+</div>
+<span class="text-xs font-bold text-slate-200">Perfect Pass</span>
+<span class="text-[10px] text-slate-400">Zone 2/3 target seam</span>
+</button>
+</div>
+
+<!-- Dual Plot Mode Indicator Banner -->
+<div id="dualStepBanner" class="mt-4 p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-xl text-xs flex items-center gap-2 text-cyan-200">
+<i class="fa-solid fa-circle-info text-cyan-400 text-base"></i>
+<span id="dualStepText"><strong>2-Click Plotting:</strong> Click 1 on court where passer touched ball (FROM).</span>
+</div>
+</div>
+
+<!-- STATS & EFFICIENCY BREAKDOWN -->
+<div class="glass-panel p-5 rounded-2xl shadow-xl flex-grow flex flex-col justify-between">
+<div>
+<h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center justify-between">
+<span><i class="fa-solid fa-chart-pie text-brand-400 mr-2"></i>Passing Performance</span>
+<span id="statTotalPasses" class="text-xs text-slate-400 font-semibold">Total: 0</span>
+</h2>
+
+<!-- Overall Pass Rating Gauge -->
+<div class="text-center my-2 p-4 bg-slate-900/80 rounded-2xl border border-slate-800">
+<div class="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1">Pass Rating (0.00 - 3.00)</div>
+<div id="statOverallRating" class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-cyan-400">
+0.00
+</div>
+<div id="statRatingTier" class="text-xs text-slate-500 font-medium mt-1">No passes recorded</div>
+</div>
+
+<!-- Progress Bars for 0-3 Scores -->
+<div class="space-y-3 mt-4">
+<div>
+<div class="flex justify-between text-xs font-semibold mb-1">
+<span class="text-blue-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-500"></span>3 Pass (Perfect Target)</span>
+<span id="count-3-text" class="text-slate-300">0 (0%)</span>
+</div>
+<div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+<div id="bar-3" class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+</div>
+</div>
+
+<div>
+<div class="flex justify-between text-xs font-semibold mb-1">
+<span class="text-green-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-green-500"></span>2 Pass (Good)</span>
+<span id="count-2-text" class="text-slate-300">0 (0%)</span>
+</div>
+<div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+<div id="bar-2" class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+</div>
+</div>
+
+<div>
+<div class="flex justify-between text-xs font-semibold mb-1">
+<span class="text-amber-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>1 Pass (Off-System)</span>
+<span id="count-1-text" class="text-slate-300">0 (0%)</span>
+</div>
+<div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+<div id="bar-1" class="bg-amber-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+</div>
+</div>
+
+<div>
+<div class="flex justify-between text-xs font-semibold mb-1">
+<span class="text-red-400 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>0 Pass (Error/Ace)</span>
+<span id="count-0-text" class="text-slate-300">0 (0%)</span>
+</div>
+<div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+<div id="bar-0" class="bg-red-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
+</div>
+</div>
+</div>
+</div>
+
+<div class="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400">
+<div class="flex justify-between items-center mb-1 font-semibold">
+<span>Target Accuracy (Zone 2/3 Seam)</span>
+<span id="targetAccuracyPct" class="text-cyan-400 font-bold">0%</span>
+</div>
+<p class="text-[11px] text-slate-500 leading-snug">
+Measures percentage of passes delivered within optimal setter zone near net.
+</p>
+</div>
+</div>
+</section>
+
+<!-- RIGHT MAIN PANEL: COURT CANVAS & DUAL MAP VISUALIZATION (8 COLS) -->
+<section class="lg:col-span-8 flex flex-col gap-4">
+
+<!-- TOOLBAR & VIEW MODE SWITCHER -->
+<div class="glass-panel p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3">
+
+<div class="flex items-center bg-slate-900/90 p-1 rounded-xl border border-slate-800 flex-wrap">
+<button type="button" onclick="setViewMode('vectors')" id="viewBtnVectors" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-brand-600 text-white shadow cursor-pointer">
+<i class="fa-solid fa-route"></i> Trajectories (From → To)
+</button>
+<button type="button" onclick="setViewMode('from')" id="viewBtnFrom" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer">
+<i class="fa-solid fa-street-view"></i> Passed FROM (Origin)
+</button>
+<button type="button" onclick="setViewMode('to')" id="viewBtnTo" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer">
+<i class="fa-solid fa-bullseye"></i> Passed TO (Target)
+</button>
+</div>
+
+<div class="flex items-center gap-2">
+<button type="button" onclick="undoLastPass()" id="undoBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+<i class="fa-solid fa-rotate-left text-amber-400"></i> Undo
+</button>
+<button type="button" onclick="confirmClearPasses()" id="clearBtn" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+<i class="fa-solid fa-trash-can"></i> Clear Passes
+</button>
+</div>
+</div>
+
+<!-- COURT CANVAS CONTAINER -->
+<div class="glass-panel p-4 sm:p-6 rounded-2xl shadow-2xl flex flex-col items-center justify-center relative overflow-hidden">
+
+<div class="w-full max-w-xl flex items-center justify-between mb-2 px-2 text-xs font-bold uppercase tracking-widest text-slate-400">
+<span class="flex items-center gap-1 text-cyan-400"><i class="fa-solid fa-bullseye"></i> NET & TARGET ZONE (TOP)</span>
+<span id="courtActiveLabel" class="text-slate-400">RECEIVE COURT (BOTTOM)</span>
+</div>
+
+<div class="court-container w-full max-w-xl aspect-[9/10] bg-slate-950 rounded-xl overflow-hidden border-2 border-slate-700/80 shadow-2xl relative cursor-crosshair">
+
+<canvas id="courtCanvas" class="w-full h-full block"></canvas>
+
+<div id="courtTooltip" class="hidden absolute pointer-events-none bg-slate-900/95 border border-slate-700 text-white text-xs px-2.5 py-1.5 rounded-lg shadow-xl z-20 transition-opacity transform -translate-x-1/2 -translate-y-full mb-2">
+<div id="tooltipText" class="font-semibold"></div>
+</div>
+</div>
+
+<div class="w-full max-w-xl mt-4 flex flex-wrap items-center justify-between text-xs text-slate-400 border-t border-slate-800/80 pt-3 gap-2">
+<div class="flex items-center gap-3 flex-wrap">
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>0 Ace/Shank</span>
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>1 Off-Sys</span>
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>2 Good</span>
+<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>3 Perfect Target</span>
+</div>
+<div id="plottingGuideText" class="text-[11px] text-cyan-300 font-medium">
+Click 1: Contact Point (FROM) | Click 2: Setter Target (TO)
+</div>
+</div>
+</div>
+
+<!-- ZONE DUAL EFFICIENCY ANALYSIS TABLE -->
+<div class="glass-panel p-5 rounded-2xl shadow-xl">
+<h2 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+<span><i class="fa-solid fa-table text-brand-400 mr-2"></i>Zone Origin vs Target Analysis</span>
+<span class="text-xs text-slate-500">Zones 1 through 6</span>
+</h2>
+
+<div class="overflow-x-auto">
+<table class="w-full text-left text-xs text-slate-300">
+<thead class="bg-slate-900/80 text-slate-400 uppercase font-semibold text-[10px] border-b border-slate-800">
+<tr>
+<th class="p-2.5">Court Zone</th>
+<th class="p-2.5 text-center">Passes FROM Here</th>
+<th class="p-2.5 text-center">Origin Rating</th>
+<th class="p-2.5 text-center">Passes Landed TO Here</th>
+<th class="p-2.5 text-right">Target Share</th>
+</tr>
+</thead>
+<tbody id="zoneTableBody" class="divide-y divide-slate-800/60 font-medium">
+</tbody>
+</table>
+</div>
+</div>
+
+</section>
+</div>
+</main>
+
+<footer class="border-t border-slate-800 bg-slate-950 py-4 text-center text-xs text-slate-500">
+<div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+<div>ReceiveIQ Dual Serve-Receive Tracker</div>
+<div>Full Roster Loaded: 14 Players | Persistent Storage Active</div>
+</div>
+</footer>
+
+<!-- MODAL: CREATE NEW GAME -->
+<div id="newGameModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+<div class="glass-panel w-full max-w-md p-6 rounded-2xl shadow-2xl border border-slate-700/80 relative">
+<div class="flex justify-between items-center mb-4">
+<h3 class="text-lg font-bold text-white flex items-center gap-2">
+<i class="fa-solid fa-trophy text-amber-400"></i> Create New Game
+</h3>
+<button type="button" onclick="closeNewGameModal()" class="text-slate-400 hover:text-white transition-all cursor-pointer p-1">
+<i class="fa-solid fa-xmark text-lg"></i>
+</button>
+</div>
+
+<form onsubmit="handleNewGameFormSubmit(event)" class="space-y-4">
+<div>
+<label for="modalGameTitle" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Opponent / Match Title</label>
+<input type="text" id="modalGameTitle" required placeholder="e.g. vs Central High" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-brand-500 focus:outline-none">
+</div>
+
+<div>
+<label for="modalGameDate" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Match Date</label>
+<input type="date" id="modalGameDate" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:ring-2 focus:ring-brand-500 focus:outline-none">
+</div>
+
+<div class="flex justify-end gap-3 mt-6 pt-2">
+<button type="button" onclick="closeNewGameModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 transition-all cursor-pointer">Cancel</button>
+<button type="submit" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-500 shadow-md transition-all cursor-pointer">Create Game</button>
+</div>
+</form>
+</div>
+</div>
+
+<!-- MODAL: CLEAR PASSES CONFIRMATION -->
+<div id="clearConfirmModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+<div class="glass-panel w-full max-w-sm p-6 rounded-2xl shadow-2xl border border-red-500/30">
+<div class="text-center mb-4">
+<div class="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto mb-3 border border-red-500/30">
+<i class="fa-solid fa-triangle-exclamation text-xl"></i>
+</div>
+<h3 class="text-lg font-bold text-white">Clear Active Passes?</h3>
+<p id="clearModalMessage" class="text-xs text-slate-400 mt-2">
+Are you sure you want to permanently clear logged passes for this selection?
+</p>
+</div>
+
+<div class="flex justify-center gap-3 mt-6">
+<button type="button" onclick="closeClearModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-all cursor-pointer">Cancel</button>
+<button type="button" onclick="executeClearPasses()" class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-500 shadow-lg shadow-red-600/30 transition-all cursor-pointer">Yes, Clear Passes</button>
+</div>
+</div>
+</div>
+
+<script>
+// --- 1. FULL 14-PLAYER TEAM ROSTER ---
+const ROSTER = [
+{ id: "p1", number: 1, name: "Gladwin Sahagun", position: "Outside" },
+{ id: "p2", number: 2, name: "Clyde Mislang", position: "Opposite" },
+{ id: "p3", number: 3, name: "Porter Andres", position: "Middle" },
+{ id: "p4", number: 4, name: "Praise Itoya", position: "Middle" },
+{ id: "p5", number: 5, name: "William France", position: "Libero" },
+{ id: "p6", number: 6, name: "Jake Murray", position: "Outside" },
+{ id: "p7", number: 7, name: "Tyrese Constantino", position: "Libero" },
+{ id: "p8", number: 8, name: "Hugo Andres", position: "Middle" },
+{ id: "p9", number: 9, name: "Evan Hall", position: "Setter" },
+{ id: "p10", number: 10, name: "Makar Okhrymenko", position: "Opposite" },
+{ id: "p11", number: 11, name: "Owen Pingert", position: "Outside" },
+{ id: "p12", number: 12, name: "Marcus Bugera", position: "Setter" },
+{ id: "p13", number: 13, name: "Connor Kress", position: "Libero" },
+{ id: "p14", number: 14, name: "Ryan Korie", position: "Middle" }
+];
+
+// --- 2. LOCAL STORAGE PERSISTENCE HELPERS ---
+const STORAGE_KEY = 'receiveiq_app_memory_v2';
+
+function saveToLocalStorage() {
+try {
+const payload = {
+games: state.games,
+passes: state.passes,
+selectedGameId: state.selectedGameId,
+selectedPlayerId: state.selectedPlayerId
+};
+localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+} catch (e) {
+console.warn('Unable to write to LocalStorage:', e);
+}
+}
+
+function loadFromLocalStorage() {
+try {
+const raw = localStorage.getItem(STORAGE_KEY);
+if (raw) {
+const parsed = JSON.parse(raw);
+if (parsed.games && Array.isArray(parsed.games) && parsed.games.length > 0) state.games = parsed.games;
+if (parsed.passes && Array.isArray(parsed.passes)) state.passes = parsed.passes;
+if (parsed.selectedGameId) state.selectedGameId = parsed.selectedGameId;
+if (parsed.selectedPlayerId) state.selectedPlayerId = parsed.selectedPlayerId;
+return true;
+}
+} catch (e) {
+console.warn('Unable to read from LocalStorage:', e);
+}
+return false;
+}
+
+// --- 3. GLOBAL STATE ---
+let state = {
+games: [
+{ id: "g1", title: "Game 1 vs Rival High", date: "2026-09-15" },
+{ id: "g2", title: "Game 2 Tournament Semi", date: "2026-09-22" }
+],
+selectedGameId: "ALL",
+selectedPlayerId: "ALL",
+selectedScoreToPlot: 3,
+viewMode: "vectors",
+pendingContactPoint: null,
+passes: []
+};
+
+let canvas, ctx;
+let tooltip, tooltipText;
+
+window.addEventListener('DOMContentLoaded', () => {
+canvas = document.getElementById('courtCanvas');
+ctx = canvas.getContext('2d');
+tooltip = document.getElementById('courtTooltip');
+tooltipText = document.getElementById('tooltipText');
+
+const hasMemory = loadFromLocalStorage();
+if (!hasMemory) {
+seedSamplePasses();
+saveToLocalStorage();
+}
+
+populateRosterDropdown();
+populateGameDropdown();
+
+document.getElementById('modalGameDate').value = new Date().toISOString().split('T')[0];
+
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+canvas.addEventListener('click', handleCanvasClick);
+canvas.addEventListener('mousemove', handleCanvasMouseMove);
+canvas.addEventListener('mouseleave', () => tooltip.classList.add('hidden'));
+
+updateScoreButtonStyles();
+updateUI();
+});
+
+function seedSamplePasses() {
+const initialPasses = [];
+const mainPassers = ["p1", "p5", "p6", "p7", "p11", "p13"];
+const scores = [3, 3, 3, 2, 2, 2, 1, 0];
+
+mainPassers.forEach((playerId, idx) => {
+const count = 6 + (idx % 3);
+for (let i = 0; i < count; i++) {
+const gameId = i % 2 === 0 ? "g1" : "g2";
+const score = scores[Math.floor(Math.random() * scores.length)];
+
+const fromX = 15 + Math.random() * 70;
+const fromY = 45 + Math.random() * 45;
+
+let toX, toY;
+if (score === 3) {
+toX = 60 + (Math.random() * 10 - 5);
+toY = 10 + (Math.random() * 8 - 4);
+} else if (score === 2) {
+toX = 50 + (Math.random() * 30 - 15);
+toY = 22 + (Math.random() * 12 - 6);
+} else if (score === 1) {
+toX = 25 + (Math.random() * 50);
+toY = 40 + (Math.random() * 25);
+} else {
+toX = Math.random() > 0.5 ? 95 : 5;
+toY = Math.random() * 80;
+}
+
+initialPasses.push({
+id: 'pass_' + Math.random().toString(36).substr(2, 9),
+gameId: gameId,
+playerId: playerId,
+score: score,
+fromX: fromX,
+fromY: fromY,
+toX: toX,
+toY: toY,
+timestamp: Date.now() - Math.floor(Math.random() * 100000)
+});
+}
+});
+
+state.passes = initialPasses;
+}
+
+function populateRosterDropdown() {
+const groups = {
+Libero: document.getElementById('optgroup-libero'),
+Outside: document.getElementById('optgroup-outside'),
+Opposite: document.getElementById('optgroup-opposite'),
+Middle: document.getElementById('optgroup-middle'),
+Setter: document.getElementById('optgroup-setter')
+};
+
+Object.values(groups).forEach(g => { if (g) g.innerHTML = ''; });
+
+ROSTER.forEach(player => {
+const option = document.createElement('option');
+option.value = player.id;
+option.className = 'bg-slate-900 text-slate-100 font-medium';
+option.textContent = `#${player.number} ${player.name} (${player.position})`;
+
+if (groups[player.position]) {
+groups[player.position].appendChild(option);
+}
+});
+
+const sel = document.getElementById('playerSelect');
+if (sel) sel.value = state.selectedPlayerId;
+}
+
+function populateGameDropdown() {
+const select = document.getElementById('gameSelect');
+if (!select) return;
+
+select.innerHTML = '<option value="ALL" class="bg-slate-900 text-slate-200">Full Season (All Games)</option>';
+
+state.games.forEach(game => {
+const opt = document.createElement('option');
+opt.value = game.id;
+opt.className = 'bg-slate-900 text-slate-200';
+opt.textContent = `${game.title} (${game.date})`;
+select.appendChild(opt);
+});
+
+select.value = state.selectedGameId;
+}
+
+// --- NEW GAME MODAL FUNCTIONS ---
+function openNewGameModal() {
+const modal = document.getElementById('newGameModal');
+if (modal) {
+document.getElementById('modalGameTitle').value = '';
+document.getElementById('modalGameDate').value = new Date().toISOString().split('T')[0];
+modal.classList.remove('hidden');
+setTimeout(() => document.getElementById('modalGameTitle')?.focus(), 100);
+} else {
+// Fallback prompt if modal element is obstructed
+const title = prompt("Enter Opponent / Match Name:");
+if (title && title.trim()) {
+createNewGameDirect(title.trim(), new Date().toISOString().split('T')[0]);
+}
+}
+}
+
+function closeNewGameModal() {
+const modal = document.getElementById('newGameModal');
+if (modal) modal.classList.add('hidden');
+}
+
+function handleNewGameFormSubmit(e) {
+e.preventDefault();
+const titleInput = document.getElementById('modalGameTitle').value.trim();
+const dateInput = document.getElementById('modalGameDate').value;
+
+if (titleInput) {
+createNewGameDirect(titleInput, dateInput);
+closeNewGameModal();
+}
+}
+
+function createNewGameDirect(title, date) {
+const newGameId = 'game_' + Math.random().toString(36).substr(2, 9);
+const newGame = {
+id: newGameId,
+title: title,
+date: date || new Date().toISOString().split('T')[0]
+};
+
+state.games.push(newGame);
+state.selectedGameId = newGameId;
+saveToLocalStorage();
+
+populateGameDropdown();
+handleGameChange();
+}
+
+function resizeCanvas() {
+if (!canvas) return;
+const container = canvas.parentElement;
+const rect = container.getBoundingClientRect();
+const dpr = window.devicePixelRatio || 1;
+
+canvas.width = rect.width * dpr;
+canvas.height = rect.height * dpr;
+
+ctx.scale(dpr, dpr);
+renderCourt();
+}
+
+function renderCourt() {
+if (!ctx) return;
+
+const width = canvas.width / (window.devicePixelRatio || 1);
+const height = canvas.height / (window.devicePixelRatio || 1);
+
+ctx.fillStyle = "#090d16";
+ctx.fillRect(0, 0, width, height);
+
+const padX = width * 0.08;
+const padY = height * 0.08;
+const courtW = width - (padX * 2);
+const courtH = height - (padY * 2);
+
+ctx.fillStyle = "#1e293b";
+ctx.fillRect(padX, padY, courtW, courtH);
+
+ctx.strokeStyle = "#f8fafc";
+ctx.lineWidth = 3;
+ctx.strokeRect(padX, padY, courtW, courtH);
+
+const attackLineY = padY + (courtH * 0.333);
+ctx.beginPath();
+ctx.moveTo(padX, attackLineY);
+ctx.lineTo(padX + courtW, attackLineY);
+ctx.lineWidth = 2;
+ctx.setLineDash([6, 6]);
+ctx.strokeStyle = "rgba(248, 250, 252, 0.5)";
+ctx.stroke();
+ctx.setLineDash([]);
+
+ctx.strokeStyle = "#0284c7";
+ctx.lineWidth = 6;
+ctx.beginPath();
+ctx.moveTo(padX - 10, padY);
+ctx.lineTo(padX + courtW + 10, padY);
+ctx.stroke();
+
+drawTargetZoneBox(padX, padY, courtW, courtH);
+drawZoneLabels(padX, padY, courtW, courtH);
+
+const activePasses = getFilteredPasses();
+
+if (state.viewMode === 'vectors') {
+renderTrajectoryVectors(activePasses, padX, padY, courtW, courtH);
+} else if (state.viewMode === 'from') {
+renderFromOriginMap(activePasses, padX, padY, courtW, courtH);
+} else if (state.viewMode === 'to') {
+renderToTargetMap(activePasses, padX, padY, courtW, courtH);
+}
+
+if (state.pendingContactPoint) {
+renderPendingMarker(padX, padY, courtW, courtH);
+}
+}
+
+function drawTargetZoneBox(padX, padY, courtW, courtH) {
+const targetX = padX + courtW * 0.55;
+const targetY = padY + courtH * 0.03;
+const targetW = courtW * 0.30;
+const targetH = courtH * 0.18;
+
+ctx.fillStyle = "rgba(56, 189, 248, 0.1)";
+ctx.fillRect(targetX, targetY, targetW, targetH);
+
+ctx.strokeStyle = "rgba(56, 189, 248, 0.4)";
+ctx.lineWidth = 1.5;
+ctx.setLineDash([4, 4]);
+ctx.strokeRect(targetX, targetY, targetW, targetH);
+ctx.setLineDash([]);
+
+ctx.fillStyle = "rgba(56, 189, 248, 0.7)";
+ctx.font = "700 9px Inter, sans-serif";
+ctx.textAlign = "center";
+ctx.fillText("TARGET ZONE", targetX + targetW / 2, targetY + targetH / 2);
+}
+
+function drawZoneLabels(padX, padY, courtW, courtH) {
+ctx.fillStyle = "rgba(148, 163, 184, 0.15)";
+ctx.font = "700 28px Inter, sans-serif";
+ctx.textAlign = "center";
+ctx.textBaseline = "middle";
+
+const zones = [
+{ num: "Z4", x: padX + courtW * 0.18, y: padY + courtH * 0.20 },
+{ num: "Z3", x: padX + courtW * 0.50, y: padY + courtH * 0.20 },
+{ num: "Z2", x: padX + courtW * 0.82, y: padY + courtH * 0.20 },
+{ num: "Z5", x: padX + courtW * 0.18, y: padY + courtH * 0.68 },
+{ num: "Z6", x: padX + courtW * 0.50, y: padY + courtH * 0.68 },
+{ num: "Z1", x: padX + courtW * 0.82, y: padY + courtH * 0.68 }
+];
+
+zones.forEach(z => ctx.fillText(z.num, z.x, z.y));
+}
+
+function renderTrajectoryVectors(passes, padX, padY, courtW, courtH) {
+const colorMap = { 0: '#ef4444', 1: '#eab308', 2: '#22c55e', 3: '#3b82f6' };
+
+passes.forEach(p => {
+const fx = padX + (p.fromX / 100) * courtW;
+const fy = padY + (p.fromY / 100) * courtH;
+const tx = padX + (p.toX / 100) * courtW;
+const ty = padY + (p.toY / 100) * courtH;
+
+const color = colorMap[p.score];
+
+ctx.strokeStyle = color + 'aa';
+ctx.lineWidth = 2;
+ctx.beginPath();
+ctx.moveTo(fx, fy);
+ctx.lineTo(tx, ty);
+ctx.stroke();
+
+const angle = Math.atan2(ty - fy, tx - fx);
+const headLen = 8;
+ctx.fillStyle = color;
+ctx.beginPath();
+ctx.moveTo(tx, ty);
+ctx.lineTo(tx - headLen * Math.cos(angle - Math.PI / 6), ty - headLen * Math.sin(angle - Math.PI / 6));
+ctx.lineTo(tx - headLen * Math.cos(angle + Math.PI / 6), ty - headLen * Math.sin(angle + Math.PI / 6));
+ctx.closePath();
+ctx.fill();
+
+ctx.beginPath();
+ctx.arc(fx, fy, 5, 0, Math.PI * 2);
+ctx.fillStyle = color;
+ctx.fill();
+ctx.strokeStyle = '#ffffff';
+ctx.lineWidth = 1;
+ctx.stroke();
+});
+}
+
+function renderFromOriginMap(passes, padX, padY, courtW, courtH) {
+const colorMap = { 0: '#ef4444', 1: '#eab308', 2: '#22c55e', 3: '#3b82f6' };
+
+passes.forEach(p => {
+const fx = padX + (p.fromX / 100) * courtW;
+const fy = padY + (p.fromY / 100) * courtH;
+
+ctx.beginPath();
+ctx.arc(fx, fy, 8, 0, Math.PI * 2);
+ctx.fillStyle = colorMap[p.score] + '40';
+ctx.fill();
+
+ctx.beginPath();
+ctx.arc(fx, fy, 5, 0, Math.PI * 2);
+ctx.fillStyle = colorMap[p.score];
+ctx.fill();
+ctx.strokeStyle = '#ffffff';
+ctx.lineWidth = 1.5;
+ctx.stroke();
+});
+}
+
+function renderToTargetMap(passes, padX, padY, courtW, courtH) {
+const colorMap = { 0: '#ef4444', 1: '#eab308', 2: '#22c55e', 3: '#3b82f6' };
+
+passes.forEach(p => {
+const tx = padX + (p.toX / 100) * courtW;
+const ty = padY + (p.toY / 100) * courtH;
+
+ctx.strokeStyle = colorMap[p.score];
+ctx.lineWidth = 1.5;
+
+ctx.beginPath();
+ctx.arc(tx, ty, 6, 0, Math.PI * 2);
+ctx.stroke();
+
+ctx.beginPath();
+ctx.moveTo(tx - 9, ty); ctx.lineTo(tx + 9, ty);
+ctx.moveTo(tx, ty - 9); ctx.lineTo(tx, ty + 9);
+ctx.stroke();
+});
+}
+
+function renderPendingMarker(padX, padY, courtW, courtH) {
+const fx = padX + (state.pendingContactPoint.fromX / 100) * courtW;
+const fy = padY + (state.pendingContactPoint.fromY / 100) * courtH;
+
+ctx.beginPath();
+ctx.arc(fx, fy, 14, 0, Math.PI * 2);
+ctx.fillStyle = 'rgba(56, 189, 248, 0.3)';
+ctx.fill();
+
+ctx.beginPath();
+ctx.arc(fx, fy, 7, 0, Math.PI * 2);
+ctx.fillStyle = '#0284c7';
+ctx.fill();
+ctx.strokeStyle = '#ffffff';
+ctx.lineWidth = 2;
+ctx.stroke();
+
+ctx.fillStyle = '#38bdf8';
+ctx.font = '800 10px Inter, sans-serif';
+ctx.textAlign = 'center';
+ctx.fillText("FROM (Contact)", fx, fy - 18);
+}
+
+function handleCanvasClick(e) {
+const rect = canvas.getBoundingClientRect();
+const clickX = e.clientX - rect.left;
+const clickY = e.clientY - rect.top;
+
+const width = rect.width;
+const height = rect.height;
+
+const padX = width * 0.08;
+const padY = height * 0.08;
+const courtW = width - (padX * 2);
+const courtH = height - (padY * 2);
+
+if (clickX < padX - 10 || clickX > padX + courtW + 10 || clickY < padY - 10 || clickY > padY + courtH + 10) {
+return;
+}
+
+const normX = Math.max(0, Math.min(100, ((clickX - padX) / courtW) * 100));
+const normY = Math.max(0, Math.min(100, ((clickY - padY) / courtH) * 100));
+
+if (!state.pendingContactPoint) {
+state.pendingContactPoint = { fromX: normX, fromY: normY };
+
+document.getElementById('dualStepText').innerHTML = `
+<strong class="text-amber-400">Step 2 of 2:</strong> Now click where the ball went / landed (TO Target).
+`;
+document.getElementById('plottingGuideText').textContent = "Click Step 2: Set Ball Target Location (TO)";
+renderCourt();
+} else {
+let targetGameId = state.selectedGameId === "ALL" ? (state.games[state.games.length - 1]?.id || "g1") : state.selectedGameId;
+let targetPlayerId = state.selectedPlayerId === "ALL" ? "p5" : state.selectedPlayerId;
+
+const newPass = {
+id: 'pass_' + Math.random().toString(36).substr(2, 9),
+gameId: targetGameId,
+playerId: targetPlayerId,
+score: state.selectedScoreToPlot,
+fromX: state.pendingContactPoint.fromX,
+fromY: state.pendingContactPoint.fromY,
+toX: normX,
+toY: normY,
+timestamp: Date.now()
+};
+
+state.passes.push(newPass);
+saveToLocalStorage();
+
+state.pendingContactPoint = null;
+document.getElementById('dualStepText').innerHTML = `
+<strong>2-Click Plotting:</strong> Click 1 on court where passer touched ball (FROM).
+`;
+document.getElementById('plottingGuideText').textContent = "Click 1: Contact Point (FROM) | Click 2: Setter Target (TO)";
+
+updateUI();
+}
+}
+
+function handleCanvasMouseMove(e) {
+const rect = canvas.getBoundingClientRect();
+const mouseX = e.clientX - rect.left;
+const mouseY = e.clientY - rect.top;
+
+const width = rect.width;
+const height = rect.height;
+const padX = width * 0.08;
+const padY = height * 0.08;
+const courtW = width - (padX * 2);
+const courtH = height - (padY * 2);
+
+const activePasses = getFilteredPasses();
+let hoveredPass = null;
+
+for (let p of activePasses) {
+const fx = padX + (p.fromX / 100) * courtW;
+const fy = padY + (p.fromY / 100) * courtH;
+const tx = padX + (p.toX / 100) * courtW;
+const ty = padY + (p.toY / 100) * courtH;
+
+if (Math.hypot(mouseX - fx, mouseY - fy) <= 12 || Math.hypot(mouseX - tx, mouseY - ty) <= 12) {
+hoveredPass = p;
+break;
+}
+}
+
+if (hoveredPass) {
+const player = ROSTER.find(r => r.id === hoveredPass.playerId);
+const game = state.games.find(g => g.id === hoveredPass.gameId);
+const playerName = player ? `#${player.number} ${player.name}` : 'Unknown';
+
+tooltipText.innerHTML = `
+<div class="font-bold text-cyan-400">${playerName}</div>
+<div class="text-[10px] text-slate-300">Score: <span class="font-extrabold text-white">${hoveredPass.score} Pass</span></div>
+<div class="text-[9px] text-slate-400">${game ? game.title : 'Season'}</div>
+`;
+tooltip.style.left = `${mouseX}px`;
+tooltip.style.top = `${mouseY}px`;
+tooltip.classList.remove('hidden');
+} else {
+tooltip.classList.add('hidden');
+}
+}
+
+function getFilteredPasses() {
+return state.passes.filter(p => {
+const matchGame = (state.selectedGameId === "ALL") || (p.gameId === state.selectedGameId);
+const matchPlayer = (state.selectedPlayerId === "ALL") || (p.playerId === state.selectedPlayerId);
+return matchGame && matchPlayer;
+});
+}
+
+function calculateStats(passes) {
+const total = passes.length;
+if (total === 0) {
+return {
+total: 0,
+rating: 0,
+targetAccuracyPct: 0,
+counts: { 0: 0, 1: 0, 2: 0, 3: 0 },
+pcts: { 0: 0, 1: 0, 2: 0, 3: 0 }
+};
+}
+
+const counts = { 0: 0, 1: 0, 2: 0, 3: 0 };
+let scoreSum = 0;
+let targetAccurateCount = 0;
+
+passes.forEach(p => {
+counts[p.score] = (counts[p.score] || 0) + 1;
+scoreSum += p.score;
+
+if (p.toX >= 55 && p.toX <= 85 && p.toY >= 3 && p.toY <= 21) {
+targetAccurateCount++;
+}
+});
+
+const rating = scoreSum / total;
+const targetAccuracyPct = Math.round((targetAccurateCount / total) * 100);
+const pcts = {
+0: Math.round((counts[0] / total) * 100),
+1: Math.round((counts[1] / total) * 100),
+2: Math.round((counts[2] / total) * 100),
+3: Math.round((counts[3] / total) * 100)
+};
+
+return { total, rating, targetAccuracyPct, counts, pcts };
+}
+
+function calculateZoneStats(passes) {
+const zoneData = {
+1: { fromCount: 0, fromSum: 0, toCount: 0 },
+2: { fromCount: 0, fromSum: 0, toCount: 0 },
+3: { fromCount: 0, fromSum: 0, toCount: 0 },
+4: { fromCount: 0, fromSum: 0, toCount: 0 },
+5: { fromCount: 0, fromSum: 0, toCount: 0 },
+6: { fromCount: 0, fromSum: 0, toCount: 0 }
+};
+
+const getZone = (x, y) => {
+if (y < 33.3) {
+if (x < 33.3) return 4;
+if (x < 66.6) return 3;
+return 2;
+} else {
+if (x < 33.3) return 5;
+if (x < 66.6) return 6;
+return 1;
+}
+};
+
+passes.forEach(p => {
+const zFrom = getZone(p.fromX, p.fromY);
+const zTo = getZone(p.toX, p.toY);
+
+zoneData[zFrom].fromCount++;
+zoneData[zFrom].fromSum += p.score;
+zoneData[zTo].toCount++;
+});
+
+const totalPasses = passes.length || 1;
+const result = {};
+
+Object.keys(zoneData).forEach(z => {
+const fc = zoneData[z].fromCount;
+const rating = fc > 0 ? (zoneData[z].fromSum / fc) : 0;
+const tc = zoneData[z].toCount;
+const targetShare = Math.round((tc / totalPasses) * 100);
+
+result[z] = { fromCount: fc, rating, toCount: tc, targetShare };
+});
+
+return result;
+}
+
+function updateUI() {
+const activePasses = getFilteredPasses();
+const stats = calculateStats(activePasses);
+
+document.getElementById('playerPassCountBadge').textContent = `${stats.total} pass${stats.total !== 1 ? 'es' : ''}`;
+
+const cardName = document.getElementById('cardPlayerName');
+const cardRole = document.getElementById('cardPlayerRole');
+const cardRating = document.getElementById('cardPlayerRating');
+
+if (state.selectedPlayerId === "ALL") {
+cardName.textContent = "Entire Team";
+cardRole.textContent = "14 Players Active";
+} else {
+const p = ROSTER.find(r => r.id === state.selectedPlayerId);
+if (p) {
+cardName.textContent = `#${p.number} ${p.name}`;
+cardRole.textContent = `${p.position}`;
+}
+}
+cardRating.textContent = stats.rating.toFixed(2);
+
+document.getElementById('statTotalPasses').textContent = `Total: ${stats.total}`;
+document.getElementById('statOverallRating').textContent = stats.rating.toFixed(2);
+document.getElementById('targetAccuracyPct').textContent = `${stats.targetAccuracyPct}%`;
+
+const tierEl = document.getElementById('statRatingTier');
+if (stats.total === 0) {
+tierEl.textContent = "No passes recorded";
+tierEl.className = "text-xs text-slate-500 font-medium mt-1";
+} else if (stats.rating >= 2.4) {
+tierEl.textContent = "In-System Dominant";
+tierEl.className = "text-xs text-blue-400 font-bold mt-1";
+} else if (stats.rating >= 2.0) {
+tierEl.textContent = "Solid Passing Efficiency";
+tierEl.className = "text-xs text-green-400 font-bold mt-1";
+} else if (stats.rating >= 1.5) {
+tierEl.textContent = "Off-System Warning";
+tierEl.className = "text-xs text-amber-400 font-bold mt-1";
+} else {
+tierEl.textContent = "Passing Breakdown";
+tierEl.className = "text-xs text-red-400 font-bold mt-1";
+}
+
+[0, 1, 2, 3].forEach(score => {
+document.getElementById(`count-${score}-text`).textContent = `${stats.counts[score]} (${stats.pcts[score]}%)`;
+document.getElementById(`bar-${score}`).style.width = `${stats.pcts[score]}%`;
+});
+
+const disableActions = activePasses.length === 0;
+document.getElementById('undoBtn').disabled = disableActions;
+document.getElementById('clearBtn').disabled = disableActions;
+
+updateZoneTable(activePasses);
+renderCourt();
+}
+
+function updateZoneTable(activePasses) {
+const tbody = document.getElementById('zoneTableBody');
+const zoneStats = calculateZoneStats(activePasses);
+
+const zoneNames = {
+1: "Right Back (Z1)",
+2: "Right Front (Z2)",
+3: "Middle Front (Z3)",
+4: "Left Front (Z4)",
+5: "Left Back (Z5)",
+6: "Middle Back (Z6)"
+};
+
+let html = '';
+[1, 6, 5, 2, 3, 4].forEach(zId => {
+const z = zoneStats[zId];
+let ratingDisplay = '<span class="text-slate-500">-</span>';
+
+if (z.fromCount > 0) {
+let colClass = 'text-red-400';
+if (z.rating >= 2.4) colClass = 'text-blue-400 font-extrabold';
+else if (z.rating >= 2.0) colClass = 'text-green-400 font-bold';
+else if (z.rating >= 1.5) colClass = 'text-amber-400 font-bold';
+
+ratingDisplay = `<span class="${colClass}">${z.rating.toFixed(2)}</span>`;
+}
+
+html += `
+<tr class="hover:bg-slate-800/40 transition-all">
+<td class="p-2.5 font-bold text-slate-200">Zone ${zId} <span class="text-[10px] text-slate-400 font-normal">(${zoneNames[zId]})</span></td>
+<td class="p-2.5 text-center font-semibold text-slate-300">${z.fromCount}</td>
+<td class="p-2.5 text-center">${ratingDisplay}</td>
+<td class="p-2.5 text-center font-semibold text-cyan-400">${z.toCount}</td>
+<td class="p-2.5 text-right font-medium text-slate-400">${z.targetShare}%</td>
+</tr>
+`;
+});
+
+tbody.innerHTML = html;
+}
+
+function setScoreToPlot(score) {
+state.selectedScoreToPlot = score;
+updateScoreButtonStyles();
+}
+
+function updateScoreButtonStyles() {
+[0, 1, 2, 3].forEach(s => {
+const btn = document.getElementById(`scoreBtn-${s}`);
+if (btn) {
+if (s === state.selectedScoreToPlot) {
+btn.classList.add('ring-2', 'ring-white', 'scale-[1.02]');
+btn.classList.remove('opacity-60');
+} else {
+btn.classList.remove('ring-2', 'ring-white', 'scale-[1.02]');
+btn.classList.add('opacity-60');
+}
+}
+});
+}
+
+function setViewMode(mode) {
+state.viewMode = mode;
+
+const btnVectors = document.getElementById('viewBtnVectors');
+const btnFrom = document.getElementById('viewBtnFrom');
+const btnTo = document.getElementById('viewBtnTo');
+
+[btnVectors, btnFrom, btnTo].forEach(b => {
+if (b) b.className = "px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer";
+});
+
+if (mode === 'vectors' && btnVectors) btnVectors.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-brand-600 text-white shadow cursor-pointer";
+if (mode === 'from' && btnFrom) btnFrom.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-brand-600 text-white shadow cursor-pointer";
+if (mode === 'to' && btnTo) btnTo.className = "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 bg-brand-600 text-white shadow cursor-pointer";
+
+renderCourt();
+}
+
+function handlePlayerChange() {
+state.selectedPlayerId = document.getElementById('playerSelect').value;
+state.pendingContactPoint = null;
+saveToLocalStorage();
+updateUI();
+}
+
+function handleGameChange() {
+state.selectedGameId = document.getElementById('gameSelect').value;
+state.pendingContactPoint = null;
+saveToLocalStorage();
+updateUI();
+}
+
+function undoLastPass() {
+if (state.pendingContactPoint) {
+state.pendingContactPoint = null;
+document.getElementById('dualStepText').innerHTML = `
+<strong>2-Click Plotting:</strong> Click 1 on court where passer touched ball (FROM).
+`;
+document.getElementById('plottingGuideText').textContent = "Click 1: Contact Point (FROM) | Click 2: Setter Target (TO)";
+renderCourt();
+return;
+}
+
+const activePasses = getFilteredPasses();
+if (activePasses.length === 0) return;
+
+const latestPass = activePasses[activePasses.length - 1];
+state.passes = state.passes.filter(p => p.id !== latestPass.id);
+saveToLocalStorage();
+
+updateUI();
+}
+
+function confirmClearPasses() {
+const activePasses = getFilteredPasses();
+if (activePasses.length === 0) return;
+
+let contextName = "all season passes";
+if (state.selectedGameId !== "ALL") {
+const g = state.games.find(game => game.id === state.selectedGameId);
+contextName = g ? `passes for "${g.title}"` : "game passes";
+}
+if (state.selectedPlayerId !== "ALL") {
+const p = ROSTER.find(player => player.id === state.selectedPlayerId);
+contextName += p ? ` by ${p.name}` : "";
+}
+
+document.getElementById('clearModalMessage').textContent = `Are you sure you want to permanently clear ${activePasses.length} logged ${contextName}?`;
+document.getElementById('clearConfirmModal').classList.remove('hidden');
+}
+
+function closeClearModal() {
+document.getElementById('clearConfirmModal').classList.add('hidden');
+}
+
+function executeClearPasses() {
+const activePasses = getFilteredPasses();
+const activeIds = new Set(activePasses.map(p => p.id));
+
+state.passes = state.passes.filter(p => !activeIds.has(p.id));
+saveToLocalStorage();
+
+closeClearModal();
+updateUI();
+}
+
+function confirmResetAllData() {
+if (confirm("Reset app data back to factory defaults? This will erase all custom games and passes.")) {
+localStorage.removeItem(STORAGE_KEY);
+location.reload();
+}
+}
+
+function exportData() {
+const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+const downloadAnchor = document.createElement('a');
+downloadAnchor.setAttribute("href", dataStr);
+downloadAnchor.setAttribute("download", `Volleyball_Dual_PassData_${new Date().toISOString().split('T')[0]}.json`);
+document.body.appendChild(downloadAnchor);
+downloadAnchor.click();
+downloadAnchor.remove();
+}
+</script>
+</body>
+</html>
